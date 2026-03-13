@@ -1,4 +1,9 @@
+import fcntl
+import os
+import tempfile
+
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import OperationalError
 
 db = SQLAlchemy()
 
@@ -7,10 +12,20 @@ def init_db(app):
     """Initialize the database with the Flask app."""
     db.init_app(app)
     with app.app_context():
-        # SQLAlchemy 2.0 recommended pattern: pass a Connection, not an Engine.
-        # checkfirst=True prevents "table already exists" races between workers.
-        with db.engine.begin() as conn:
-            db.metadata.create_all(conn, checkfirst=True)
+        # Use a file lock so that concurrent gunicorn workers don't race on
+        # CREATE TABLE.  The second worker will block until the first finishes,
+        # then see the tables already exist and skip them cleanly.
+        lock_path = os.path.join(tempfile.gettempdir(), "autoapply_db_init.lock")
+        with open(lock_path, "w") as _lock:
+            fcntl.flock(_lock, fcntl.LOCK_EX)
+            try:
+                with db.engine.begin() as conn:
+                    db.metadata.create_all(conn, checkfirst=True)
+            except OperationalError as exc:
+                if "already exists" not in str(exc).lower():
+                    raise
+            finally:
+                fcntl.flock(_lock, fcntl.LOCK_UN)
         _seed_default_config(app)
 
 
