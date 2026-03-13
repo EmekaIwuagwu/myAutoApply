@@ -1,9 +1,16 @@
 import asyncio
 import logging
 import os
+import tempfile
 import threading
 from datetime import datetime
 from typing import Optional
+
+try:
+    import fcntl as _fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -18,16 +25,21 @@ _agent_loop: Optional[asyncio.AbstractEventLoop] = None
 
 # Under gunicorn each worker process is a fork. We only want the scheduler
 # running in ONE process. Use a file-lock so only the first worker wins.
-_SCHEDULER_LOCK_FILE = "/tmp/autoapply_scheduler.lock"
+_SCHEDULER_LOCK_FILE = os.path.join(tempfile.gettempdir(), "autoapply_scheduler.lock")
 _scheduler_owner = False  # True only in the process that holds the lock
 
 
 def _try_acquire_scheduler_lock() -> bool:
-    """Return True if this process successfully claimed the scheduler lock."""
-    import fcntl
+    """Return True if this process successfully claimed the scheduler lock.
+
+    On Windows (dev server) fcntl is not available — always return True since
+    there is only one process anyway.
+    """
+    if not _HAS_FCNTL:
+        return True
     try:
         fd = open(_SCHEDULER_LOCK_FILE, "w")
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
         fd.write(str(os.getpid()))
         fd.flush()
         # Keep fd open so the lock is held for the life of this process
