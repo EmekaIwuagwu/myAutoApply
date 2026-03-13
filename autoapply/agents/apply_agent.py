@@ -7,7 +7,7 @@ from typing import Optional, Dict, List
 
 from ..browser.playwright_engine import PlaywrightEngine
 from ..browser.human_simulator import random_delay, human_type, scroll_page
-from ..database.db import db
+from ..database.db import db, get_config_value
 from ..database.models import JobListing, Application, Resume, UserProfile, AgentLog
 from ..llm.analyzer import JobAnalyzer
 from ..vision.screenshot import take_screenshot
@@ -73,15 +73,17 @@ class ApplyAgent:
 
         self._log("apply_start", "info", f"Applying to: {job_title} @ {job_company}")
 
-        # Generate cover letter
+        # Generate cover letter (only if enabled in config and profile exists)
         cover_letter = ""
-        if profile:
-            with self.app.app_context():
-                profile_data = {
-                    "name": profile.name or "",
-                    "skills": profile.skills or "",
-                    "experience_years": profile.experience_years or 0,
-                }
+        with self.app.app_context():
+            gen_cover = get_config_value("generate_cover_letter", "true").lower() == "true"
+            profile_data = {
+                "name": (profile.name or "") if profile else "",
+                "skills": (profile.skills or "") if profile else "",
+                "experience_years": (profile.experience_years or 0) if profile else 0,
+            }
+
+        if profile and gen_cover:
             try:
                 cover_letter = self.analyzer.generate_cover_letter(
                     job_title=job_title,

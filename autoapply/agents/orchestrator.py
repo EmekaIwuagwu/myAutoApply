@@ -31,6 +31,18 @@ class Orchestrator:
     def is_running(self) -> bool:
         return self._running
 
+    def _should_stop(self) -> bool:
+        """Check both the in-memory flag and the DB flag (set by stop button via different thread)."""
+        if self._stop_requested:
+            return True
+        if self.app:
+            with self.app.app_context():
+                flag = get_config_value("agent_stop_requested", "false")
+                if flag.lower() == "true":
+                    self._stop_requested = True
+                    return True
+        return False
+
     def _log(self, action: str, status: str, message: str):
         if not self.app:
             logger.info(f"[{self.name}] {action}: {message}")
@@ -65,6 +77,11 @@ class Orchestrator:
 
         self._running = True
         self._stop_requested = False
+        # Reset DB stop flag at start of run
+        if self.app:
+            with self.app.app_context():
+                from ..database.db import set_config_value
+                set_config_value("agent_stop_requested", "false")
         stats = {
             "jobs_found": 0,
             "jobs_analyzed": 0,
@@ -77,7 +94,7 @@ class Orchestrator:
 
         try:
             # Step 1: Search for jobs
-            if self._stop_requested:
+            if self._should_stop():
                 return stats
             self._log("search_start", "info", "Step 1: Searching for jobs")
             keywords_str = get_config_value("search_keywords", "Python Developer")
@@ -89,14 +106,14 @@ class Orchestrator:
             self._log("search_done", "success", f"Found {jobs_found} new jobs")
 
             # Step 2: Analyze new jobs
-            if self._stop_requested:
+            if self._should_stop():
                 return stats
             self._log("analyze_start", "info", "Step 2: Analyzing job fit scores")
             analyzed = self.analysis_agent.analyze_all_new()
             stats["jobs_analyzed"] = analyzed
 
             # Step 3: Apply to qualifying jobs
-            if self._stop_requested:
+            if self._should_stop():
                 return stats
 
             max_apps = int(get_config_value("max_daily_applications", "20"))
@@ -138,7 +155,7 @@ class Orchestrator:
                     ]
 
                 for job_info in qualifying_data:
-                    if self._stop_requested:
+                    if self._should_stop():
                         break
 
                     job_id = job_info["id"]
@@ -191,9 +208,9 @@ class Orchestrator:
             "info",
             f"Starting agent loop (every {interval_minutes} minutes)",
         )
-        while not self._stop_requested:
+        while not self._should_stop():
             await self.run_once(dry_run=dry_run)
-            if not self._stop_requested:
+            if not self._should_stop():
                 self._log(
                     "loop_wait",
                     "info",

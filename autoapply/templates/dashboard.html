@@ -136,20 +136,26 @@
 
 {% block scripts %}
 <script>
-  let agentRunning = {{ 'true' if agent_running else 'false' }};
-
   function toggleAgent() {
-    const endpoint = agentRunning ? '/api/agent/stop' : '/api/agent/start';
     const btn = document.getElementById('btn-label');
     btn.textContent = 'Working...';
 
-    fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+    // Always fetch live status first to avoid stale template variable
+    fetch('/api/agent/status')
+      .then(r => r.json())
+      .then(status => {
+        const endpoint = status.running ? '/api/agent/stop' : '/api/agent/start';
+        return fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      })
       .then(r => r.json())
       .then(data => {
         showToast(data.message, data.status === 'success' ? 'success' : 'error');
         setTimeout(() => location.reload(), 1500);
       })
-      .catch(() => showToast('Request failed', 'error'));
+      .catch(() => {
+        showToast('Request failed', 'error');
+        btn.textContent = 'Start Agent';
+      });
   }
 
   function triggerScrape() {
@@ -162,17 +168,24 @@
   fetch('/api/agent/status')
     .then(r => r.json())
     .then(data => {
-      document.getElementById('stat-new').textContent = '—';
-      document.getElementById('stat-analyzed').textContent = '—';
+      document.getElementById('stat-new').textContent = data.jobs_new ?? '—';
+      document.getElementById('stat-analyzed').textContent = data.jobs_analyzed ?? '—';
       document.getElementById('stat-applied').textContent = data.apps_today;
       document.getElementById('stat-budget').textContent = `${data.apps_today}/${data.max_daily_apps}`;
 
       const dot = document.getElementById('dash-dot');
-      const status = document.getElementById('dash-status');
+      const statusEl = document.getElementById('dash-status');
+      const btnLabel = document.getElementById('btn-label');
       if (data.running) {
         dot.className = 'w-3 h-3 rounded-full bg-green-400 animate-pulse';
-        status.className = 'text-lg font-bold text-green-400';
-        status.textContent = 'Running';
+        statusEl.className = 'text-lg font-bold text-green-400';
+        statusEl.textContent = 'Running';
+        if (btnLabel) btnLabel.textContent = 'Stop Agent';
+      } else {
+        dot.className = 'w-3 h-3 rounded-full bg-slate-500';
+        statusEl.className = 'text-lg font-bold text-slate-400';
+        statusEl.textContent = 'Idle';
+        if (btnLabel) btnLabel.textContent = 'Start Agent';
       }
     });
 </script>

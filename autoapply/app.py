@@ -352,24 +352,31 @@ def create_app():
 
     @app.route("/logs/stream")
     def logs_stream():
-        """SSE endpoint for real-time log streaming."""
+        """SSE endpoint for real-time log streaming (runs in its own thread via Flask streaming)."""
+        import time
+
+        # Capture the last log ID before entering the generator
+        with app.app_context():
+            last_id = db.session.query(db.func.max(AgentLog.id)).scalar() or 0
+
         def generate():
-            last_id = AgentLog.query.count()
+            nonlocal last_id
             while True:
-                import time
                 time.sleep(3)
-                new_logs = (
-                    AgentLog.query.filter(AgentLog.id > last_id)
-                    .order_by(AgentLog.timestamp.asc())
-                    .all()
-                )
-                if new_logs:
-                    for log in new_logs:
-                        data = json.dumps(log.to_dict())
-                        yield f"data: {data}\n\n"
-                    last_id = new_logs[-1].id
-                else:
-                    yield "data: {\"heartbeat\": true}\n\n"
+                # Must use app context inside the generator thread
+                with app.app_context():
+                    new_logs = (
+                        AgentLog.query.filter(AgentLog.id > last_id)
+                        .order_by(AgentLog.timestamp.asc())
+                        .all()
+                    )
+                    if new_logs:
+                        for log in new_logs:
+                            data = json.dumps(log.to_dict())
+                            yield f"data: {data}\n\n"
+                        last_id = new_logs[-1].id
+                    else:
+                        yield 'data: {"heartbeat": true}\n\n'
 
         return Response(
             generate(),
@@ -377,6 +384,7 @@ def create_app():
             headers={
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
             },
         )
 
@@ -407,6 +415,9 @@ def create_app():
         max_apps = int(get_config_value("max_daily_applications", "20"))
         total_jobs = JobListing.query.count()
         total_apps = Application.query.count()
+        jobs_new = JobListing.query.filter_by(status="new").count()
+        jobs_analyzed = JobListing.query.filter_by(status="analyzed").count()
+        jobs_applied = JobListing.query.filter_by(status="applied").count()
 
         return jsonify(
             {
@@ -415,6 +426,9 @@ def create_app():
                 "max_daily_apps": max_apps,
                 "total_jobs": total_jobs,
                 "total_applications": total_apps,
+                "jobs_new": jobs_new,
+                "jobs_analyzed": jobs_analyzed,
+                "jobs_applied": jobs_applied,
                 "ollama_ok": OllamaClient().is_available(),
             }
         )
