@@ -93,52 +93,60 @@ class Orchestrator:
         self._log("pipeline_start", "info", "Starting AutoApply pipeline")
 
         try:
-            # Step 1: Search for jobs
-            if self._should_stop():
-                return stats
-            self._log("search_start", "info", "Step 1: Searching for jobs")
-            keywords_str = get_config_value("search_keywords", "Python Developer")
-            keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
-            location = get_config_value("search_location", "Remote")
+            # Push app context for the entire pipeline — we're in a background thread
+            ctx = self.app.app_context() if self.app else None
+            if ctx:
+                ctx.push()
 
-            jobs_found = await self.search_agent.run(keywords, location)
-            stats["jobs_found"] = jobs_found
-            self._log("search_done", "success", f"Found {jobs_found} new jobs")
+            try:
+                # Step 1: Search for jobs
+                if self._should_stop():
+                    return stats
+                self._log("search_start", "info", "Step 1: Searching for jobs")
+                keywords_str = get_config_value("search_keywords", "Python Developer")
+                keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
+                location = get_config_value("search_location", "Remote")
 
-            # Step 2: Analyze new jobs
-            if self._should_stop():
-                return stats
-            self._log("analyze_start", "info", "Step 2: Analyzing job fit scores")
-            analyzed = self.analysis_agent.analyze_all_new()
-            stats["jobs_analyzed"] = analyzed
+                jobs_found = await self.search_agent.run(keywords, location)
+                stats["jobs_found"] = jobs_found
+                self._log("search_done", "success", f"Found {jobs_found} new jobs")
 
-            # Step 3: Apply to qualifying jobs
-            if self._should_stop():
-                return stats
+                # Step 2: Analyze new jobs
+                if self._should_stop():
+                    return stats
+                self._log("analyze_start", "info", "Step 2: Analyzing job fit scores")
+                analyzed = self.analysis_agent.analyze_all_new()
+                stats["jobs_analyzed"] = analyzed
 
-            max_apps = int(get_config_value("max_daily_applications", "20"))
-            min_score = float(get_config_value("min_fit_score", "0.65"))
-            blacklist = get_config_value("blacklisted_companies", "").lower().split(",")
-            blacklist = [b.strip() for b in blacklist if b.strip()]
+                # Step 3: Apply to qualifying jobs
+                if self._should_stop():
+                    return stats
 
-            daily_count = self._get_daily_application_count()
-            remaining = max_apps - daily_count
+                max_apps = int(get_config_value("max_daily_applications", "20"))
+                min_score = float(get_config_value("min_fit_score", "0.65"))
+                blacklist = get_config_value("blacklisted_companies", "").lower().split(",")
+                blacklist = [b.strip() for b in blacklist if b.strip()]
 
-            if remaining <= 0:
-                self._log(
-                    "daily_limit",
-                    "warning",
-                    f"Daily application limit reached ({max_apps})",
-                )
-            else:
-                self._log(
-                    "apply_start",
-                    "info",
-                    f"Step 3: Applying to jobs (budget: {remaining} remaining today)",
-                )
+                today = date.today()
+                daily_count = Application.query.filter(
+                    Application.status == "submitted",
+                    db.func.date(Application.applied_at) == today,
+                ).count()
+                remaining = max_apps - daily_count
 
-                # Get qualifying jobs
-                with self.app.app_context():
+                if remaining <= 0:
+                    self._log(
+                        "daily_limit",
+                        "warning",
+                        f"Daily application limit reached ({max_apps})",
+                    )
+                else:
+                    self._log(
+                        "apply_start",
+                        "info",
+                        f"Step 3: Applying to jobs (budget: {remaining} remaining today)",
+                    )
+
                     qualifying = (
                         JobListing.query.filter(
                             JobListing.status == "analyzed",
@@ -154,39 +162,43 @@ class Orchestrator:
                         if j.company.lower() not in blacklist
                     ]
 
-                for job_info in qualifying_data:
-                    if self._should_stop():
-                        break
+                    for job_info in qualifying_data:
+                        if self._should_stop():
+                            break
 
-                    job_id = job_info["id"]
+                        job_id = job_info["id"]
 
-                    # Get tailored resume
-                    resume_path = self.resume_agent.get_resume_for_job(job_id)
+                        # Get tailored resume
+                        resume_path = self.resume_agent.get_resume_for_job(job_id)
 
-                    # Apply
-                    try:
-                        success = await self.apply_agent.apply_to_job(
-                            job_id=job_id,
-                            resume_path=resume_path,
-                            dry_run=dry_run,
-                        )
-                        if success:
-                            stats["jobs_applied"] += 1
-                        else:
+                        # Apply
+                        try:
+                            success = await self.apply_agent.apply_to_job(
+                                job_id=job_id,
+                                resume_path=resume_path,
+                                dry_run=dry_run,
+                            )
+                            if success:
+                                stats["jobs_applied"] += 1
+                            else:
+                                stats["errors"] += 1
+                        except Exception as e:
                             stats["errors"] += 1
-                    except Exception as e:
-                        stats["errors"] += 1
-                        self._log("apply_error", "error", f"Error applying to job {job_id}: {e}")
+                            self._log("apply_error", "error", f"Error applying to job {job_id}: {e}")
 
-                    # Respect rate limiting
-                    await asyncio.sleep(5)
+                        # Respect rate limiting
+                        await asyncio.sleep(5)
 
-            self._log(
-                "pipeline_complete",
-                "success",
-                f"Pipeline done. Found: {stats['jobs_found']}, Analyzed: {stats['jobs_analyzed']}, "
-                f"Applied: {stats['jobs_applied']}, Errors: {stats['errors']}",
-            )
+                self._log(
+                    "pipeline_complete",
+                    "success",
+                    f"Pipeline done. Found: {stats['jobs_found']}, Analyzed: {stats['jobs_analyzed']}, "
+                    f"Applied: {stats['jobs_applied']}, Errors: {stats['errors']}",
+                )
+
+            finally:
+                if ctx:
+                    ctx.pop()
 
         except Exception as e:
             self._log("pipeline_error", "error", f"Pipeline failed: {e}")
