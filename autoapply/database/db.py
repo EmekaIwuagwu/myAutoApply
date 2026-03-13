@@ -1,4 +1,3 @@
-import fcntl
 import os
 import tempfile
 
@@ -7,25 +6,37 @@ from sqlalchemy.exc import OperationalError
 
 db = SQLAlchemy()
 
+# fcntl is Unix-only; on Windows (dev) there are no concurrent workers so no
+# file lock is needed.
+try:
+    import fcntl as _fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
+
 
 def init_db(app):
     """Initialize the database with the Flask app."""
     db.init_app(app)
     with app.app_context():
-        # Use a file lock so that concurrent gunicorn workers don't race on
-        # CREATE TABLE.  The second worker will block until the first finishes,
-        # then see the tables already exist and skip them cleanly.
-        lock_path = os.path.join(tempfile.gettempdir(), "autoapply_db_init.lock")
-        with open(lock_path, "w") as _lock:
-            fcntl.flock(_lock, fcntl.LOCK_EX)
-            try:
-                with db.engine.begin() as conn:
-                    db.metadata.create_all(conn, checkfirst=True)
-            except OperationalError as exc:
-                if "already exists" not in str(exc).lower():
-                    raise
-            finally:
-                fcntl.flock(_lock, fcntl.LOCK_UN)
+        if _HAS_FCNTL:
+            # Production (Linux/gunicorn): serialise concurrent workers so only
+            # one runs CREATE TABLE at a time.
+            lock_path = os.path.join(tempfile.gettempdir(), "autoapply_db_init.lock")
+            with open(lock_path, "w") as _lock:
+                _fcntl.flock(_lock, _fcntl.LOCK_EX)
+                try:
+                    with db.engine.begin() as conn:
+                        db.metadata.create_all(conn, checkfirst=True)
+                except OperationalError as exc:
+                    if "already exists" not in str(exc).lower():
+                        raise
+                finally:
+                    _fcntl.flock(_lock, _fcntl.LOCK_UN)
+        else:
+            # Windows dev server: single process, no lock needed.
+            with db.engine.begin() as conn:
+                db.metadata.create_all(conn, checkfirst=True)
         _seed_default_config(app)
 
 
