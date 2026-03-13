@@ -36,6 +36,12 @@ class Config:
     # Always headless on Render (no display); show browser locally by default
     HEADLESS = os.getenv("HEADLESS", "true" if ON_RENDER else "false").lower() == "true"
     SLOW_MO = int(os.getenv("SLOW_MO", "50"))
+    # Persistent browser profile dir — saves cookies/login sessions between runs.
+    # Cloudflare clearance cookies (~24 h) mean you only solve the challenge once.
+    BROWSER_PROFILE_DIR = os.getenv(
+        "BROWSER_PROFILE_DIR",
+        os.path.join(_DATA_ROOT, "browser_profile"),
+    )
 
     # ── File storage ──────────────────────────────────────────────────────────
     RESUME_UPLOAD_FOLDER = os.getenv(
