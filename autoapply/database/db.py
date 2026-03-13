@@ -7,9 +7,10 @@ def init_db(app):
     """Initialize the database with the Flask app."""
     db.init_app(app)
     with app.app_context():
-        # Use MetaData.create_all with checkfirst=True so concurrent workers
-        # don't race and crash with "table already exists"
-        db.metadata.create_all(bind=db.engine, checkfirst=True)
+        # SQLAlchemy 2.0 recommended pattern: pass a Connection, not an Engine.
+        # checkfirst=True prevents "table already exists" races between workers.
+        with db.engine.begin() as conn:
+            db.metadata.create_all(conn, checkfirst=True)
         _seed_default_config(app)
 
 
