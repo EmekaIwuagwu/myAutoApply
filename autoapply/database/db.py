@@ -7,7 +7,8 @@ def init_db(app):
     """Initialize the database with the Flask app."""
     db.init_app(app)
     with app.app_context():
-        db.create_all()
+        # checkfirst=True → uses CREATE TABLE IF NOT EXISTS, safe with multiple workers
+        db.create_all(checkfirst=True)
         _seed_default_config(app)
 
 
