@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Resume{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-5">
+  <h1 class="text-2xl font-bold text-white">Resume Manager</h1>
+
+  <!-- Upload form -->
+  <div class="card">
+    <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Upload Resume</h2>
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      <div class="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-blue-500 transition-colors" id="drop-zone">
+        <svg class="w-10 h-10 text-slate-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p class="text-slate-300 font-medium mb-1">Drop your resume here or click to browse</p>
+        <p class="text-slate-500 text-sm">Supports PDF and DOCX</p>
+        <input type="file" name="resume_file" id="resume-input" accept=".pdf,.docx,.doc"
+               class="hidden" onchange="updateFileName(this)" required />
+        <button type="button" onclick="document.getElementById('resume-input').click()"
+                class="btn-secondary text-sm mt-3">Browse Files</button>
+        <p id="file-name" class="text-blue-400 text-sm mt-2"></p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <input type="checkbox" name="set_default" id="set_default" class="rounded" />
+        <label for="set_default" class="text-slate-300 text-sm">Set as default resume</label>
+      </div>
+
+      <button type="submit" class="btn-primary">Upload Resume</button>
+    </form>
+  </div>
+
+  <!-- Existing resumes -->
+  {% if resumes %}
+  <div class="card">
+    <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Your Resumes</h2>
+    <div class="space-y-3">
+      {% for resume in resumes %}
+      <div class="flex items-center justify-between p-3 rounded-lg border border-slate-700 {% if resume.is_default %}border-blue-600 bg-blue-950{% endif %}">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg {% if resume.file_type == 'pdf' %}bg-red-900 text-red-300{% else %}bg-blue-900 text-blue-300{% endif %} flex items-center justify-center text-xs font-bold uppercase">
+            {{ resume.file_type }}
+          </div>
+          <div>
+            <p class="text-white font-medium text-sm">{{ resume.filename }}</p>
+            <p class="text-slate-500 text-xs">
+              Uploaded {{ resume.uploaded_at.strftime('%Y-%m-%d') if resume.uploaded_at else '—' }}
+              {% if resume.is_default %} · <span class="text-blue-400">Default</span>{% endif %}
+            </p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          {% if not resume.is_default %}
+          <form method="post" action="/resume/{{ resume.id }}/set-default">
+            <button type="submit" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded">Set Default</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/resume/{{ resume.id }}/delete" onsubmit="return confirm('Delete this resume?')">
+            <button type="submit" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded">Delete</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function updateFileName(input) {
+    document.getElementById('file-name').textContent = input.files[0]?.name || '';
+  }
+
+  // Drag and drop
+  const dropZone = document.getElementById('drop-zone');
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-blue-400'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-400'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('border-blue-400');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const input = document.getElementById('resume-input');
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      updateFileName(input);
+    }
+  });
+</script>
+{% endblock %}

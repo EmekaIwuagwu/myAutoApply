@@ -1,0 +1,46 @@
+/* AutoApply custom styles — augments Tailwind */
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1e293b; }
+::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+/* Table row hover */
+.hover\:bg-slate-750:hover { background-color: #1a2744; }
+
+/* Smooth transitions */
+* { transition-property: color, background-color, border-color, opacity;
+    transition-duration: 150ms; }
+
+/* Loading spinner */
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid #334155;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Fit score bar */
+.fit-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: #1e293b;
+  overflow: hidden;
+}
+.fit-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* Log entry highlight animation */
+.log-entry.new {
+  animation: highlight 2s ease-out;
+}
+@keyframes highlight {
+  0% { background-color: rgba(59, 130, 246, 0.2); }
+  100% { background-color: transparent; }
+}

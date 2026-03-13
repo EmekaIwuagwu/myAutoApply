@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6">
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+      <p class="text-slate-400 text-sm mt-1">AutoApply Agent Overview</p>
+    </div>
+    <div class="flex items-center gap-3">
+      {% if not ollama_ok %}
+      <div class="flex items-center gap-2 bg-yellow-900 text-yellow-300 px-3 py-1.5 rounded-lg text-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        Ollama offline
+      </div>
+      {% endif %}
+      <button id="btn-start" onclick="toggleAgent()" class="btn-primary flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span id="btn-label">{% if agent_running %}Stop Agent{% else %}Start Agent{% endif %}</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="card">
+      <p class="text-slate-400 text-sm">Jobs Scraped (Today)</p>
+      <p class="text-3xl font-bold text-white mt-1">{{ jobs_today }}</p>
+      <p class="text-slate-500 text-xs mt-1">{{ total_jobs }} all time</p>
+    </div>
+    <div class="card">
+      <p class="text-slate-400 text-sm">Applications (Today)</p>
+      <p class="text-3xl font-bold text-blue-400 mt-1">{{ apps_today }}</p>
+      <p class="text-slate-500 text-xs mt-1">{{ total_apps }} all time</p>
+    </div>
+    <div class="card">
+      <p class="text-slate-400 text-sm">Success Rate</p>
+      <p class="text-3xl font-bold text-green-400 mt-1">{{ success_rate }}%</p>
+      <p class="text-slate-500 text-xs mt-1">submitted vs total</p>
+    </div>
+    <div class="card">
+      <p class="text-slate-400 text-sm">Agent Status</p>
+      <div class="flex items-center gap-2 mt-2">
+        <div id="dash-dot" class="w-3 h-3 rounded-full {% if agent_running %}bg-green-400 animate-pulse{% else %}bg-slate-500{% endif %}"></div>
+        <p class="text-lg font-bold {% if agent_running %}text-green-400{% else %}text-slate-400{% endif %}" id="dash-status">
+          {% if agent_running %}Running{% else %}Idle{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Platform breakdown + Quick actions -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Platform cards -->
+    <div class="card lg:col-span-2">
+      <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Jobs by Platform</h2>
+      <div class="space-y-3">
+        {% set platform_colors = {'indeed': 'bg-blue-500', 'linkedin': 'bg-sky-500', 'greenhouse': 'bg-green-500', 'remoteco': 'bg-purple-500'} %}
+        {% for platform, count in platforms %}
+        <div class="flex items-center gap-3">
+          <div class="w-2 h-2 rounded-full {{ platform_colors.get(platform, 'bg-slate-500') }}"></div>
+          <span class="text-slate-300 capitalize flex-1">{{ platform }}</span>
+          <span class="text-white font-semibold">{{ count }}</span>
+        </div>
+        {% else %}
+        <p class="text-slate-500 text-sm">No jobs scraped yet. Start the agent or trigger a scrape.</p>
+        {% endfor %}
+      </div>
+      <div class="mt-4 pt-4 border-t border-slate-700 flex gap-3">
+        <button onclick="triggerScrape()" class="btn-secondary text-sm">
+          Scrape Now
+        </button>
+        <a href="/jobs" class="btn-secondary text-sm">View All Jobs</a>
+        <a href="/api/jobs/export" class="btn-secondary text-sm">Export CSV</a>
+      </div>
+    </div>
+
+    <!-- Quick stats -->
+    <div class="card">
+      <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Quick Stats</h2>
+      <div class="space-y-3 text-sm">
+        <div class="flex justify-between">
+          <span class="text-slate-400">New (unanalyzed)</span>
+          <span class="text-white font-medium" id="stat-new">—</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Analyzed</span>
+          <span class="text-white font-medium" id="stat-analyzed">—</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Applied</span>
+          <span class="text-green-400 font-medium" id="stat-applied">—</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Daily budget</span>
+          <span class="text-white font-medium" id="stat-budget">—</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Ollama</span>
+          <span class="{% if ollama_ok %}text-green-400{% else %}text-red-400{% endif %} font-medium">
+            {% if ollama_ok %}Online{% else %}Offline{% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent activity -->
+  <div class="card">
+    <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Recent Activity</h2>
+    <div class="space-y-2" id="activity-feed">
+      {% for log in recent_logs %}
+      <div class="flex items-start gap-3 text-sm py-1.5 border-b border-slate-700 last:border-0">
+        <span class="
+          {% if log.status == 'success' %}text-green-400
+          {% elif log.status == 'error' %}text-red-400
+          {% elif log.status == 'warning' %}text-yellow-400
+          {% else %}text-slate-400{% endif %}
+          font-mono text-xs mt-0.5 w-16 flex-shrink-0">
+          {{ log.status|upper }}
+        </span>
+        <span class="text-slate-500 text-xs mt-0.5 w-32 flex-shrink-0">{{ log.agent_name }}</span>
+        <span class="text-slate-300 flex-1">{{ log.message }}</span>
+        <span class="text-slate-600 text-xs flex-shrink-0">{{ log.timestamp.strftime('%H:%M:%S') }}</span>
+      </div>
+      {% else %}
+      <p class="text-slate-500 text-sm">No activity yet. Start the agent to begin.</p>
+      {% endfor %}
+    </div>
+    <a href="/logs" class="mt-4 block text-blue-400 hover:text-blue-300 text-sm">View all logs →</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let agentRunning = {{ 'true' if agent_running else 'false' }};
+
+  function toggleAgent() {
+    const endpoint = agentRunning ? '/api/agent/stop' : '/api/agent/start';
+    const btn = document.getElementById('btn-label');
+    btn.textContent = 'Working...';
+
+    fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      .then(r => r.json())
+      .then(data => {
+        showToast(data.message, data.status === 'success' ? 'success' : 'error');
+        setTimeout(() => location.reload(), 1500);
+      })
+      .catch(() => showToast('Request failed', 'error'));
+  }
+
+  function triggerScrape() {
+    fetch('/api/jobs/scrape', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => showToast(data.message, 'info'));
+  }
+
+  // Load quick stats
+  fetch('/api/agent/status')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('stat-new').textContent = '—';
+      document.getElementById('stat-analyzed').textContent = '—';
+      document.getElementById('stat-applied').textContent = data.apps_today;
+      document.getElementById('stat-budget').textContent = `${data.apps_today}/${data.max_daily_apps}`;
+
+      const dot = document.getElementById('dash-dot');
+      const status = document.getElementById('dash-status');
+      if (data.running) {
+        dot.className = 'w-3 h-3 rounded-full bg-green-400 animate-pulse';
+        status.className = 'text-lg font-bold text-green-400';
+        status.textContent = 'Running';
+      }
+    });
+</script>
+{% endblock %}

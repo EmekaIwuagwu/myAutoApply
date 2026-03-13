@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }}{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-5">
+  <div class="flex items-start justify-between">
+    <div>
+      <a href="/jobs" class="text-slate-400 hover:text-white text-sm">← Back to Jobs</a>
+      <h1 class="text-2xl font-bold text-white mt-2">{{ job.title }}</h1>
+      <p class="text-slate-400 mt-1">{{ job.company }} {% if job.location %}· {{ job.location }}{% endif %}</p>
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      {% if job.status not in ['applied', 'skipped'] %}
+      <button onclick="analyzeJob({{ job.id }})" class="btn-secondary text-sm">Analyze</button>
+      <button onclick="applyJob({{ job.id }})" class="btn-primary text-sm">Apply Now</button>
+      {% endif %}
+      {% if job.url %}
+      <a href="{{ job.url }}" target="_blank" class="btn-secondary text-sm">Open Job ↗</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- Job info -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Job Details</h2>
+        <div class="grid grid-cols-2 gap-4 text-sm mb-5">
+          <div>
+            <p class="text-slate-500">Platform</p>
+            <p class="text-white capitalize">{{ job.platform }}</p>
+          </div>
+          <div>
+            <p class="text-slate-500">Status</p>
+            <span class="badge-{{ job.status }}">{{ job.status }}</span>
+          </div>
+          {% if job.salary_range %}
+          <div>
+            <p class="text-slate-500">Salary</p>
+            <p class="text-white">{{ job.salary_range }}</p>
+          </div>
+          {% endif %}
+          {% if job.posted_date %}
+          <div>
+            <p class="text-slate-500">Posted</p>
+            <p class="text-white">{{ job.posted_date }}</p>
+          </div>
+          {% endif %}
+          <div>
+            <p class="text-slate-500">Scraped</p>
+            <p class="text-white">{{ job.scraped_at.strftime('%Y-%m-%d %H:%M') if job.scraped_at else '—' }}</p>
+          </div>
+        </div>
+
+        <h3 class="text-sm font-semibold text-slate-300 mb-3">Job Description</h3>
+        <div class="text-slate-300 text-sm leading-relaxed whitespace-pre-line max-h-96 overflow-y-auto pr-2">
+          {{ job.description or 'No description available.' }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Fit analysis -->
+    <div class="space-y-4">
+      <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Fit Analysis</h2>
+        {% if job.fit_score > 0 %}
+        <div class="text-center mb-4">
+          <div class="text-4xl font-bold {% if job.fit_score >= 0.7 %}text-green-400{% elif job.fit_score >= 0.4 %}text-yellow-400{% else %}text-red-400{% endif %}">
+            {{ '%.0f'|format(job.fit_score * 100) }}%
+          </div>
+          <p class="text-slate-400 text-sm mt-1">Fit Score</p>
+          <div class="w-full h-2 bg-slate-700 rounded-full mt-3 overflow-hidden">
+            <div class="h-full rounded-full {% if job.fit_score >= 0.7 %}bg-green-500{% elif job.fit_score >= 0.4 %}bg-yellow-500{% else %}bg-red-500{% endif %}"
+                 style="width: {{ (job.fit_score * 100)|int }}%"></div>
+          </div>
+        </div>
+
+        {% if fit_data %}
+        {% if fit_data.summary %}
+        <p class="text-slate-300 text-sm mb-4 italic">"{{ fit_data.summary }}"</p>
+        {% endif %}
+
+        {% if fit_data.recommendation %}
+        <div class="mb-4">
+          <span class="text-slate-400 text-xs">Recommendation: </span>
+          <span class="font-bold {% if fit_data.recommendation == 'YES' %}text-green-400{% else %}text-red-400{% endif %}">
+            {{ fit_data.recommendation }}
+          </span>
+        </div>
+        {% endif %}
+
+        {% if fit_data.reasons_for %}
+        <div class="mb-3">
+          <p class="text-green-400 text-xs font-semibold uppercase mb-2">Why it fits</p>
+          <ul class="space-y-1">
+            {% for reason in fit_data.reasons_for %}
+            <li class="text-slate-300 text-xs flex gap-2"><span class="text-green-400">✓</span>{{ reason }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if fit_data.concerns %}
+        <div>
+          <p class="text-yellow-400 text-xs font-semibold uppercase mb-2">Concerns</p>
+          <ul class="space-y-1">
+            {% for concern in fit_data.concerns %}
+            <li class="text-slate-300 text-xs flex gap-2"><span class="text-yellow-400">!</span>{{ concern }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        {% else %}
+        <p class="text-slate-500 text-sm">Not analyzed yet.</p>
+        <button onclick="analyzeJob({{ job.id }})" class="btn-primary text-sm mt-3 w-full">Run Analysis</button>
+        {% endif %}
+      </div>
+
+      <!-- Applications -->
+      {% if applications %}
+      <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">Applications</h2>
+        {% for app in applications %}
+        <div class="border border-slate-700 rounded-lg p-3 mb-2">
+          <div class="flex justify-between text-xs">
+            <span class="badge-{{ app.status }}">{{ app.status }}</span>
+            <span class="text-slate-500">{{ app.applied_at.strftime('%Y-%m-%d') if app.applied_at else '—' }}</span>
+          </div>
+          {% if app.confirmation_screenshot %}
+          <a href="/uploads/screenshots/{{ app.confirmation_screenshot.split('/')[-1] }}" target="_blank"
+             class="text-blue-400 text-xs mt-2 block hover:underline">View Screenshot ↗</a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function analyzeJob(id) {
+    showToast('Analyzing…', 'info');
+    fetch(`/api/jobs/${id}/analyze`, { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'success') { showToast('Analysis complete', 'success'); setTimeout(() => location.reload(), 1500); }
+        else showToast(d.message || 'Failed', 'error');
+      });
+  }
+  function applyJob(id) {
+    if (!confirm('Apply to this job now?')) return;
+    fetch(`/api/jobs/${id}/apply`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) })
+      .then(r => r.json())
+      .then(d => showToast(d.message, d.status === 'success' ? 'success' : 'error'));
+  }
+</script>
+{% endblock %}

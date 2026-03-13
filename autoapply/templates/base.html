@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}AutoApply{% endblock %} — AI Job Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: '#3b82f6',
+            surface: '#1e293b',
+            bg: '#0f172a',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+    .sidebar-link { @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors; }
+    .sidebar-link.active { @apply bg-blue-600 text-white; }
+    .card { @apply bg-slate-800 rounded-xl p-5 border border-slate-700; }
+    .btn-primary { @apply bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors; }
+    .btn-secondary { @apply bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition-colors; }
+    .btn-danger { @apply bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-medium transition-colors; }
+    .badge-new { @apply bg-slate-700 text-slate-300 px-2 py-0.5 rounded text-xs font-medium; }
+    .badge-analyzed { @apply bg-blue-900 text-blue-300 px-2 py-0.5 rounded text-xs font-medium; }
+    .badge-applied { @apply bg-green-900 text-green-300 px-2 py-0.5 rounded text-xs font-medium; }
+    .badge-failed { @apply bg-red-900 text-red-300 px-2 py-0.5 rounded text-xs font-medium; }
+    .badge-skipped { @apply bg-slate-700 text-slate-400 px-2 py-0.5 rounded text-xs font-medium; }
+    .log-info { @apply text-slate-300; }
+    .log-success { @apply text-green-400; }
+    .log-warning { @apply text-yellow-400; }
+    .log-error { @apply text-red-400; }
+    #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; }
+    .toast { padding: 0.75rem 1.25rem; border-radius: 0.5rem; font-size: 0.9rem; min-width: 260px; animation: slideIn 0.3s ease; }
+    .toast-success { background: #166534; color: #bbf7d0; border: 1px solid #16a34a; }
+    .toast-error { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; }
+    .toast-info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
+    @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</head>
+<body class="min-h-screen flex">
+  <!-- Sidebar -->
+  <aside class="w-64 min-h-screen bg-slate-900 border-r border-slate-800 flex flex-col fixed left-0 top-0 bottom-0">
+    <div class="p-5 border-b border-slate-800">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">AA</div>
+        <span class="font-bold text-white text-lg">AutoApply</span>
+      </div>
+      <p class="text-slate-500 text-xs mt-1">AI Job Application Agent</p>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1">
+      <a href="/" class="sidebar-link {% if request.path == '/' %}active{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </a>
+      <a href="/jobs" class="sidebar-link {% if '/jobs' in request.path %}active{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        Jobs
+      </a>
+      <a href="/applications" class="sidebar-link {% if '/applications' in request.path %}active{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+        Applications
+      </a>
+      <a href="/resume" class="sidebar-link {% if '/resume' in request.path %}active{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Resume
+      </a>
+      <a href="/logs" class="sidebar-link {% if '/logs' in request.path %}active{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Logs
+      </a>
+      <a href="/settings" class="sidebar-link {% if '/settings' in request.path %}active{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Settings
+      </a>
+    </nav>
+
+    <div class="p-3 border-t border-slate-800">
+      <div id="agent-status-bar" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-sm">
+        <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-500"></div>
+        <span id="status-text" class="text-slate-400">Agent Idle</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="flex-1 ml-64 min-h-screen">
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="p-4 space-y-2">
+          {% for category, message in messages %}
+            <div class="p-3 rounded-lg {% if category == 'error' %}bg-red-900 text-red-200{% else %}bg-green-900 text-green-200{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <script>
+    // Toast system
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+
+    // Agent status polling
+    function updateAgentStatus() {
+      fetch('/api/agent/status')
+        .then(r => r.json())
+        .then(data => {
+          const dot = document.getElementById('status-dot');
+          const text = document.getElementById('status-text');
+          if (data.running) {
+            dot.className = 'w-2 h-2 rounded-full bg-green-400 animate-pulse';
+            text.className = 'text-green-400';
+            text.textContent = 'Agent Running';
+          } else {
+            dot.className = 'w-2 h-2 rounded-full bg-slate-500';
+            text.className = 'text-slate-400';
+            text.textContent = 'Agent Idle';
+          }
+        })
+        .catch(() => {});
+    }
+    updateAgentStatus();
+    setInterval(updateAgentStatus, 10000);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

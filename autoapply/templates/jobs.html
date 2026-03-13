@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Jobs{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-5">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-white">Job Listings</h1>
+    <div class="flex gap-2">
+      <button onclick="triggerScrape()" class="btn-secondary text-sm">Scrape Now</button>
+      <a href="/api/jobs/export" class="btn-secondary text-sm">Export CSV</a>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="card flex flex-wrap items-end gap-4">
+    <div>
+      <label class="block text-slate-400 text-xs mb-1">Platform</label>
+      <select name="platform" class="bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm">
+        <option value="">All Platforms</option>
+        {% for p in ['indeed', 'linkedin', 'greenhouse', 'remoteco'] %}
+        <option value="{{ p }}" {% if platform == p %}selected{% endif %}>{{ p|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-slate-400 text-xs mb-1">Status</label>
+      <select name="status" class="bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm">
+        <option value="">All Statuses</option>
+        {% for s in ['new', 'analyzed', 'applied', 'skipped', 'failed'] %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-slate-400 text-xs mb-1">Min Fit Score</label>
+      <select name="min_score" class="bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm">
+        <option value="">Any Score</option>
+        <option value="0.7" {% if min_score == '0.7' %}selected{% endif %}>High (≥0.7)</option>
+        <option value="0.5" {% if min_score == '0.5' %}selected{% endif %}>Medium (≥0.5)</option>
+        <option value="0.3" {% if min_score == '0.3' %}selected{% endif %}>Low (≥0.3)</option>
+      </select>
+    </div>
+    <button type="submit" class="btn-primary text-sm">Filter</button>
+    <a href="/jobs" class="btn-secondary text-sm">Clear</a>
+  </form>
+
+  <!-- Job table -->
+  <div class="card p-0 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="border-b border-slate-700">
+        <tr class="text-slate-400 text-xs uppercase tracking-wider">
+          <th class="text-left px-4 py-3">Job</th>
+          <th class="text-left px-4 py-3 hidden md:table-cell">Platform</th>
+          <th class="text-left px-4 py-3 hidden lg:table-cell">Fit Score</th>
+          <th class="text-left px-4 py-3">Status</th>
+          <th class="text-left px-4 py-3 hidden lg:table-cell">Scraped</th>
+          <th class="text-right px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-700">
+        {% for job in jobs %}
+        <tr class="hover:bg-slate-750 transition-colors" id="job-{{ job.id }}">
+          <td class="px-4 py-3">
+            <a href="/jobs/{{ job.id }}" class="font-medium text-white hover:text-blue-400">{{ job.title[:50] }}{% if job.title|length > 50 %}…{% endif %}</a>
+            <p class="text-slate-400 text-xs mt-0.5">{{ job.company }} {% if job.location %}· {{ job.location[:30] }}{% endif %}</p>
+          </td>
+          <td class="px-4 py-3 hidden md:table-cell">
+            <span class="text-slate-400 capitalize">{{ job.platform }}</span>
+          </td>
+          <td class="px-4 py-3 hidden lg:table-cell">
+            {% if job.fit_score > 0 %}
+            <div class="flex items-center gap-2">
+              <div class="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div class="h-full rounded-full {% if job.fit_score >= 0.7 %}bg-green-500{% elif job.fit_score >= 0.4 %}bg-yellow-500{% else %}bg-red-500{% endif %}"
+                     style="width: {{ (job.fit_score * 100)|int }}%"></div>
+              </div>
+              <span class="{% if job.fit_score >= 0.7 %}text-green-400{% elif job.fit_score >= 0.4 %}text-yellow-400{% else %}text-red-400{% endif %} font-mono text-xs">
+                {{ '%.2f'|format(job.fit_score) }}
+              </span>
+            </div>
+            {% else %}
+            <span class="text-slate-600 text-xs">—</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            <span class="badge-{{ job.status }}">{{ job.status }}</span>
+          </td>
+          <td class="px-4 py-3 hidden lg:table-cell text-slate-500 text-xs">
+            {{ job.scraped_at.strftime('%m/%d %H:%M') if job.scraped_at else '—' }}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <div class="flex items-center justify-end gap-1">
+              <a href="/jobs/{{ job.id }}" class="text-slate-400 hover:text-white px-2 py-1 rounded text-xs">View</a>
+              {% if job.status not in ['applied', 'skipped'] %}
+              <button onclick="analyzeJob({{ job.id }})" class="text-blue-400 hover:text-blue-300 px-2 py-1 rounded text-xs">Analyze</button>
+              <button onclick="applyJob({{ job.id }})" class="text-green-400 hover:text-green-300 px-2 py-1 rounded text-xs">Apply</button>
+              <button onclick="skipJob({{ job.id }})" class="text-slate-500 hover:text-slate-400 px-2 py-1 rounded text-xs">Skip</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="px-4 py-12 text-center text-slate-500">
+            No jobs found. <a href="#" onclick="triggerScrape()" class="text-blue-400 hover:underline">Trigger a scrape</a> to find jobs.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if pagination.pages > 1 %}
+  <div class="flex items-center justify-center gap-2">
+    {% if pagination.has_prev %}
+    <a href="?page={{ pagination.prev_num }}&platform={{ platform }}&status={{ status }}&min_score={{ min_score }}" class="btn-secondary text-sm">← Prev</a>
+    {% endif %}
+    <span class="text-slate-400 text-sm">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a href="?page={{ pagination.next_num }}&platform={{ platform }}&status={{ status }}&min_score={{ min_score }}" class="btn-secondary text-sm">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function triggerScrape() {
+    fetch('/api/jobs/scrape', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => showToast(d.message, 'info'));
+  }
+
+  function analyzeJob(id) {
+    showToast('Analyzing job…', 'info');
+    fetch(`/api/jobs/${id}/analyze`, { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'success') {
+          showToast(`Fit score: ${d.fit_score?.toFixed(2)}`, 'success');
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          showToast(d.message || 'Analysis failed', 'error');
+        }
+      });
+  }
+
+  function applyJob(id) {
+    if (!confirm('Apply to this job?')) return;
+    fetch(`/api/jobs/${id}/apply`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) })
+      .then(r => r.json())
+      .then(d => showToast(d.message, d.status === 'success' ? 'success' : 'error'));
+  }
+
+  function skipJob(id) {
+    fetch(`/api/jobs/${id}/skip`, { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'success') {
+          const row = document.getElementById(`job-${id}`);
+          if (row) row.style.opacity = '0.4';
+          showToast('Job skipped', 'info');
+        }
+      });
+  }
+</script>
+{% endblock %}

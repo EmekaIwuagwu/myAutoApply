@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Applications{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-5">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-white">Applications</h1>
+    <a href="/api/jobs/export" class="btn-secondary text-sm">Export CSV</a>
+  </div>
+
+  <!-- Status filter -->
+  <div class="flex gap-2 flex-wrap">
+    {% for s in ['', 'pending', 'submitted', 'failed', 'rejected', 'interview'] %}
+    <a href="/applications{% if s %}?status={{ s }}{% endif %}"
+       class="px-3 py-1.5 rounded-lg text-sm {% if status == s %}bg-blue-600 text-white{% else %}bg-slate-800 text-slate-400 hover:text-white{% endif %}">
+      {% if s %}{{ s|capitalize }}{% else %}All{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="card p-0 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="border-b border-slate-700">
+        <tr class="text-slate-400 text-xs uppercase tracking-wider">
+          <th class="text-left px-4 py-3">Job</th>
+          <th class="text-left px-4 py-3 hidden md:table-cell">Status</th>
+          <th class="text-left px-4 py-3 hidden lg:table-cell">Applied</th>
+          <th class="text-right px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-700">
+        {% for app in applications %}
+        <tr class="hover:bg-slate-750">
+          <td class="px-4 py-3">
+            {% if app.job %}
+            <a href="/jobs/{{ app.job.id }}" class="font-medium text-white hover:text-blue-400">
+              {{ app.job.title[:50] }}{% if app.job.title|length > 50 %}…{% endif %}
+            </a>
+            <p class="text-slate-400 text-xs mt-0.5">{{ app.job.company }}
+              {% if app.job.fit_score > 0 %}
+              · Fit: <span class="{% if app.job.fit_score >= 0.7 %}text-green-400{% elif app.job.fit_score >= 0.4 %}text-yellow-400{% else %}text-red-400{% endif %}">
+                {{ '%.0f'|format(app.job.fit_score * 100) }}%
+              </span>
+              {% endif %}
+            </p>
+            {% else %}
+            <span class="text-slate-500">Job #{{ app.job_id }}</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 hidden md:table-cell">
+            <span class="badge-{{ app.status }}">{{ app.status }}</span>
+          </td>
+          <td class="px-4 py-3 hidden lg:table-cell text-slate-400 text-xs">
+            {{ app.applied_at.strftime('%Y-%m-%d %H:%M') if app.applied_at else '—' }}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <a href="/applications/{{ app.id }}" class="text-slate-400 hover:text-white text-xs px-2 py-1 rounded">View</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="px-4 py-12 text-center text-slate-500">
+            No applications yet. <a href="/" class="text-blue-400 hover:underline">Start the agent</a> to begin applying.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination.pages > 1 %}
+  <div class="flex items-center justify-center gap-2">
+    {% if pagination.has_prev %}
+    <a href="?page={{ pagination.prev_num }}&status={{ status }}" class="btn-secondary text-sm">← Prev</a>
+    {% endif %}
+    <span class="text-slate-400 text-sm">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a href="?page={{ pagination.next_num }}&status={{ status }}" class="btn-secondary text-sm">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

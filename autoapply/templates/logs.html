@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-5">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-white">Agent Logs</h1>
+    <div class="flex gap-2">
+      <button onclick="toggleAutoScroll()" id="autoscroll-btn" class="btn-secondary text-sm">Auto-scroll: ON</button>
+      <button onclick="clearLogs()" class="btn-danger text-sm">Clear View</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="flex flex-wrap items-end gap-3">
+    <div>
+      <label class="block text-slate-400 text-xs mb-1">Agent</label>
+      <select name="agent" class="bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm">
+        <option value="">All Agents</option>
+        {% for a in agents %}
+        <option value="{{ a }}" {% if agent_name == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-slate-400 text-xs mb-1">Status</label>
+      <select name="status" class="bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm">
+        <option value="">All Levels</option>
+        {% for s in ['info', 'success', 'warning', 'error'] %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-primary text-sm">Filter</button>
+    <a href="/logs" class="btn-secondary text-sm">Clear</a>
+  </form>
+
+  <!-- Log feed -->
+  <div class="card p-0">
+    <div id="log-container" class="h-[60vh] overflow-y-auto font-mono text-xs p-4 space-y-1">
+      {% for log in logs|reverse %}
+      <div class="log-entry flex gap-3 py-1 border-b border-slate-800 last:border-0">
+        <span class="text-slate-600 flex-shrink-0 w-20">{{ log.timestamp.strftime('%H:%M:%S') }}</span>
+        <span class="w-28 flex-shrink-0
+          {% if log.status == 'success' %}text-green-400
+          {% elif log.status == 'error' %}text-red-400
+          {% elif log.status == 'warning' %}text-yellow-400
+          {% else %}text-slate-400{% endif %}">
+          [{{ log.agent_name[:12] }}]
+        </span>
+        <span class="
+          {% if log.status == 'success' %}text-green-300
+          {% elif log.status == 'error' %}text-red-300
+          {% elif log.status == 'warning' %}text-yellow-300
+          {% else %}text-slate-300{% endif %}
+          flex-1">
+          {{ log.message }}
+        </span>
+      </div>
+      {% else %}
+      <p class="text-slate-500 p-4">No logs yet. Start the agent to see activity here.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  {% if pagination.pages > 1 %}
+  <div class="flex items-center justify-center gap-2">
+    {% if pagination.has_prev %}
+    <a href="?page={{ pagination.prev_num }}&agent={{ agent_name }}&status={{ status }}" class="btn-secondary text-sm">← Prev</a>
+    {% endif %}
+    <span class="text-slate-400 text-sm">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a href="?page={{ pagination.next_num }}&agent={{ agent_name }}&status={{ status }}" class="btn-secondary text-sm">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let autoScroll = true;
+  let lastLogId = {{ logs[0].id if logs else 0 }};
+
+  const container = document.getElementById('log-container');
+
+  function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    document.getElementById('autoscroll-btn').textContent = `Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
+  }
+
+  function clearLogs() {
+    container.innerHTML = '<p class="text-slate-500">Log view cleared. New entries will appear below.</p>';
+  }
+
+  function appendLog(log) {
+    const statusColors = {
+      success: 'text-green-400',
+      error: 'text-red-400',
+      warning: 'text-yellow-400',
+      info: 'text-slate-400'
+    };
+    const msgColors = {
+      success: 'text-green-300',
+      error: 'text-red-300',
+      warning: 'text-yellow-300',
+      info: 'text-slate-300'
+    };
+    const color = statusColors[log.status] || 'text-slate-400';
+    const msgColor = msgColors[log.status] || 'text-slate-300';
+    const time = new Date(log.timestamp).toLocaleTimeString();
+
+    const div = document.createElement('div');
+    div.className = 'log-entry flex gap-3 py-1 border-b border-slate-800';
+    div.innerHTML = `
+      <span class="text-slate-600 flex-shrink-0 w-20">${time}</span>
+      <span class="w-28 flex-shrink-0 ${color}">[${(log.agent_name || '').substring(0,12)}]</span>
+      <span class="${msgColor} flex-1">${log.message || ''}</span>
+    `;
+    container.appendChild(div);
+    if (autoScroll) container.scrollTop = container.scrollHeight;
+  }
+
+  // SSE for real-time logs
+  const evtSource = new EventSource('/logs/stream');
+  evtSource.onmessage = function(e) {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.heartbeat) return;
+      if (data.id > lastLogId) {
+        lastLogId = data.id;
+        appendLog(data);
+      }
+    } catch(err) {}
+  };
+  evtSource.onerror = function() {
+    // Fall back to polling if SSE fails
+    evtSource.close();
+    setInterval(() => {
+      fetch(`/logs/stream`)
+        .catch(() => {});
+    }, 5000);
+  };
+
+  // Scroll to bottom on load
+  if (autoScroll) container.scrollTop = container.scrollHeight;
+</script>
+{% endblock %}
