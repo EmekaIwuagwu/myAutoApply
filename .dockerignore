@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Environment files (secrets must be set via Render dashboard, not baked in)
+.env
+*.env.local
+
+# Local databases and uploads (Render provides /data disk)
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Docs
+*.md

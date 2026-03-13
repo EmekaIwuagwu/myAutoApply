@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: autoapply
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render sets PORT automatically; our Dockerfile/CMD uses 10000
+    # but Render will override with its own value — the CMD reads $PORT
+    plan: starter          # upgrade to standard for more RAM/CPU
+    healthCheckPath: /
+
+    # Persistent disk — SQLite DB and uploaded resumes survive redeploys
+    disk:
+      name: autoapply-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: HEADLESS
+        value: "true"
+      - key: FLASK_DEBUG
+        value: "false"
+      # Generate a real secret: python -c "import secrets; print(secrets.token_hex(32))"
+      - key: SECRET_KEY
+        generateValue: true
+      # Optional — set these via the Render dashboard if you want LLM features:
+      # - key: OLLAMA_URL
+      #   value: "http://localhost:11434"
+      # - key: OLLAMA_MODEL
+      #   value: "llama3"
+      # Platform credentials (set via Settings UI in the app, or here):
+      # - key: LINKEDIN_EMAIL
+      #   value: ""
+      # - key: LINKEDIN_PASSWORD
+      #   value: ""
