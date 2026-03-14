@@ -103,8 +103,8 @@ def create_app():
             AgentLog.query.order_by(AgentLog.timestamp.desc()).limit(10).all()
         )
 
-        ollama = OllamaClient()
-        ollama_ok = ollama.is_available()
+        llm = OpenRouterClient()
+        ollama_ok = llm.is_available()
 
         return render_template(
             "dashboard.html",
@@ -431,7 +431,7 @@ def create_app():
                 "jobs_new": jobs_new,
                 "jobs_analyzed": jobs_analyzed,
                 "jobs_applied": jobs_applied,
-                "ollama_ok": OllamaClient().is_available(),
+                "ollama_ok": OpenRouterClient().is_available(),
             }
         )
 

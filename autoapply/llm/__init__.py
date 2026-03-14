@@ -1,4 +1,4 @@
-from .ollama_client import OllamaClient, ollama_client
+from .openrouter_client import OpenRouterClient, openrouter_client
 from .analyzer import JobAnalyzer, analyzer
 
-__all__ = ["OllamaClient", "ollama_client", "JobAnalyzer", "analyzer"]
+__all__ = ["OpenRouterClient", "openrouter_client", "JobAnalyzer", "analyzer"]
