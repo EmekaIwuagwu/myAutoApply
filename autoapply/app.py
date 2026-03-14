@@ -29,7 +29,7 @@ from .database.models import (
     AgentLog,
     AgentConfig,
 )
-from .llm.ollama_client import OllamaClient
+from .llm.openrouter_client import OpenRouterClient
 from .scheduler.job_scheduler import (
     start_scheduler,
     start_agent_now,
@@ -65,13 +65,15 @@ def create_app():
 
     init_db(app)
 
-    # Check Ollama on startup
+    # Check OpenRouter on startup
     with app.app_context():
-        ollama = OllamaClient()
-        if ollama.is_available():
-            logger.info("Ollama is available")
+        llm = OpenRouterClient()
+        if llm.is_available():
+            logger.info("OpenRouter LLM is available (model: %s)", config.OPENROUTER_MODEL)
         else:
-            logger.warning("Ollama not reachable at %s", config.OLLAMA_URL)
+            logger.warning(
+                "OpenRouter not available — set OPENROUTER_API_KEY in .env to enable LLM features"
+            )
 
     # Start scheduler
     start_scheduler(app)
