@@ -293,31 +293,86 @@ class ApplyAgent:
         resume_path: Optional[str],
         cover_letter: str,
     ) -> tuple[bool, str]:
-        """Apply to an Indeed job."""
+        """Apply to an Indeed job — handles multi-step wizard."""
+        screenshot_path = ""
         try:
             page = await engine.navigate(url)
             await random_delay(2.0, 3.5)
 
-            # Click apply
-            try:
-                await engine.safe_click("button#indeedApplyButton", page)
-            except Exception:
+            # Click the apply button
+            for selector in ["button#indeedApplyButton", "a[href*='apply']",
+                             "button:has-text('Apply now')", "button:has-text('Apply')"]:
                 try:
-                    await engine.safe_click("a[href*='apply']", page)
+                    await engine.safe_click(selector, page)
+                    await random_delay(1.5, 2.5)
+                    break
                 except Exception:
-                    pass
+                    continue
 
-            await random_delay(1.5, 2.5)
+            # Indeed uses a multi-step wizard — iterate through up to 15 steps
+            for step in range(15):
+                await random_delay(1.0, 2.0)
 
-            if profile:
-                await self._fill_common_fields(page, engine, profile, cover_letter)
+                if profile:
+                    await self._fill_common_fields(page, engine, profile, cover_letter)
 
-            screenshot_path = await take_screenshot(page, prefix="indeed_confirm")
-            return False, screenshot_path  # Indeed often redirects externally
+                # Upload resume if a file input is present on this step
+                if resume_path and os.path.exists(resume_path):
+                    try:
+                        file_input = await page.query_selector("input[type='file']")
+                        if file_input and await file_input.is_visible():
+                            await file_input.set_input_files(resume_path)
+                            await random_delay(1.0, 2.0)
+                    except Exception:
+                        pass
+
+                screenshot_path = await take_screenshot(page, prefix=f"indeed_step_{step}")
+
+                # Look for a submit / final-apply button first
+                submitted = False
+                for sel in [
+                    "button[aria-label*='Submit']",
+                    "button:has-text('Submit your application')",
+                    "button:has-text('Submit application')",
+                    "button:has-text('Submit')",
+                    "input[type='submit']",
+                ]:
+                    try:
+                        btn = await page.query_selector(sel)
+                        if btn and await btn.is_visible():
+                            await btn.click()
+                            await random_delay(2.0, 3.5)
+                            screenshot_path = await take_screenshot(page, prefix="indeed_submitted")
+                            return True, screenshot_path
+                    except Exception:
+                        continue
+
+                # Look for a Continue / Next button to advance the wizard
+                advanced = False
+                for sel in [
+                    "button:has-text('Continue')",
+                    "button:has-text('Next')",
+                    "button[aria-label*='Continue']",
+                    "button[data-testid='IndeedApplyButton']",
+                ]:
+                    try:
+                        btn = await page.query_selector(sel)
+                        if btn and await btn.is_visible():
+                            await btn.click()
+                            await random_delay(1.0, 2.0)
+                            advanced = True
+                            break
+                    except Exception:
+                        continue
+
+                if not advanced:
+                    break  # No more steps found
+
+            return False, screenshot_path
 
         except Exception as e:
             logger.error(f"Indeed apply error: {e}")
-            return False, ""
+            return False, screenshot_path
 
     async def _apply_generic(
         self,
@@ -327,26 +382,63 @@ class ApplyAgent:
         resume_path: Optional[str],
         cover_letter: str,
     ) -> tuple[bool, str]:
-        """Generic form-based application."""
+        """Generic form-based application — fill fields then find and click submit."""
+        screenshot_path = ""
         try:
             page = await engine.navigate(url)
             await random_delay(2.0, 3.5)
+
+            # Try to click an explicit Apply button first
+            for selector in ["a:has-text('Apply')", "button:has-text('Apply')",
+                             "#apply-button", ".apply-button"]:
+                try:
+                    btn = await page.query_selector(selector)
+                    if btn and await btn.is_visible():
+                        await btn.click()
+                        await random_delay(1.5, 2.5)
+                        break
+                except Exception:
+                    continue
 
             if profile:
                 await self._fill_common_fields(page, engine, profile, cover_letter)
 
             if resume_path and os.path.exists(resume_path):
-                file_input = await page.query_selector("input[type='file']")
-                if file_input:
-                    await file_input.set_input_files(resume_path)
-                    await random_delay(1.0, 2.0)
+                try:
+                    file_input = await page.query_selector("input[type='file']")
+                    if file_input and await file_input.is_visible():
+                        await file_input.set_input_files(resume_path)
+                        await random_delay(1.0, 2.0)
+                except Exception:
+                    pass
 
-            screenshot_path = await take_screenshot(page, prefix="generic_confirm")
+            screenshot_path = await take_screenshot(page, prefix="generic_preflight")
+
+            # Attempt to submit
+            for sel in [
+                "input[type='submit']",
+                "button[type='submit']",
+                "button:has-text('Submit')",
+                "button:has-text('Apply')",
+                "button:has-text('Send application')",
+                "#submit-app",
+                ".submit",
+            ]:
+                try:
+                    btn = await page.query_selector(sel)
+                    if btn and await btn.is_visible():
+                        await btn.click()
+                        await random_delay(2.0, 4.0)
+                        screenshot_path = await take_screenshot(page, prefix="generic_submitted")
+                        return True, screenshot_path
+                except Exception:
+                    continue
+
             return False, screenshot_path
 
         except Exception as e:
             logger.error(f"Generic apply error: {e}")
-            return False, ""
+            return False, screenshot_path
 
     async def _fill_common_fields(
         self,
@@ -355,13 +447,13 @@ class ApplyAgent:
         profile,
         cover_letter: str,
     ):
-        """Fill common application form fields."""
-        # Build field map from profile
+        """Fill common application form fields with human-like typing."""
         field_map = {}
-        if hasattr(profile, '__dict__'):
+        if hasattr(profile, "__dict__"):
+            name_parts = (profile.name or "").split()
             field_map = {
-                "first_name": (profile.name or "").split()[0] if profile.name else "",
-                "last_name": " ".join((profile.name or "").split()[1:]) if profile.name else "",
+                "first_name": name_parts[0] if name_parts else "",
+                "last_name": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
                 "name": profile.name or "",
                 "full_name": profile.name or "",
                 "email": profile.email or "",
@@ -370,18 +462,30 @@ class ApplyAgent:
                 "github": profile.github_url or "",
                 "location": profile.location or "",
                 "cover_letter": cover_letter,
-                "cover_letter_text": cover_letter,
             }
 
-        # Common input selectors and their field mapping
+        # Scroll through the page so lazy-rendered fields become visible
+        await scroll_page(page, "down", 300)
+        await random_delay(0.5, 1.0)
+
         input_mappings = [
-            (["[name*='first']", "[id*='first']", "[placeholder*='First']"], "first_name"),
-            (["[name*='last']", "[id*='last']", "[placeholder*='Last']"], "last_name"),
-            (["[name*='name']", "[id*='name']", "[placeholder*='Name']"], "name"),
-            (["[name*='email']", "[id*='email']", "[type='email']"], "email"),
-            (["[name*='phone']", "[id*='phone']", "[type='tel']"], "phone"),
+            (["[name*='first']", "[id*='first']", "[placeholder*='First']",
+              "[autocomplete='given-name']"], "first_name"),
+            (["[name*='last']", "[id*='last']", "[placeholder*='Last']",
+              "[autocomplete='family-name']"], "last_name"),
+            (["[name*='full'][name*='name']", "[id*='full'][id*='name']",
+              "[placeholder*='Full name']", "[autocomplete='name']"], "full_name"),
+            (["[name*='name']:not([name*='first']):not([name*='last'])",
+              "[id*='name']:not([id*='first']):not([id*='last'])",
+              "[placeholder*='Your name']"], "name"),
+            (["[name*='email']", "[id*='email']", "[type='email']",
+              "[autocomplete='email']"], "email"),
+            (["[name*='phone']", "[id*='phone']", "[type='tel']",
+              "[autocomplete='tel']"], "phone"),
             (["[name*='linkedin']", "[id*='linkedin']", "[placeholder*='LinkedIn']"], "linkedin"),
             (["[name*='github']", "[id*='github']", "[placeholder*='GitHub']"], "github"),
+            (["[name*='location']", "[id*='location']", "[name*='city']",
+              "[placeholder*='Location']", "[placeholder*='City']"], "location"),
         ]
 
         for selectors, field_key in input_mappings:
@@ -392,30 +496,41 @@ class ApplyAgent:
                 try:
                     element = await page.query_selector(selector)
                     if element and await element.is_visible():
-                        await element.fill(value)
+                        # Clear any existing value then type human-like
+                        await element.scroll_into_view_if_needed()
+                        await element.triple_click()
+                        await element.fill("")
+                        await human_type(page, selector, value)
                         await random_delay(0.2, 0.5)
                         break
                 except Exception:
                     continue
 
-        # Fill cover letter in textarea
+        # Fill cover letter textarea
         if cover_letter:
-            textarea_selectors = [
+            for selector in [
                 "textarea[name*='cover']",
                 "textarea[id*='cover']",
-                "textarea[placeholder*='cover']",
+                "textarea[placeholder*='cover' i]",
                 "textarea[name*='message']",
+                "textarea[id*='message']",
                 "textarea",
-            ]
-            for selector in textarea_selectors:
+            ]:
                 try:
                     element = await page.query_selector(selector)
                     if element and await element.is_visible():
-                        await element.fill(cover_letter)
+                        await element.scroll_into_view_if_needed()
+                        await element.triple_click()
+                        await element.fill("")
+                        await human_type(page, selector, cover_letter)
                         await random_delay(0.3, 0.8)
                         break
                 except Exception:
                     continue
+
+        # Scroll down again to expose any remaining fields
+        await scroll_page(page, "down", 300)
+        await random_delay(0.3, 0.6)
 
     async def _fill_linkedin_step(self, page, engine, profile, resume_path, cover_letter):
         """Fill fields in a single LinkedIn Easy Apply step."""

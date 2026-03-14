@@ -1,6 +1,6 @@
 import json
 import logging
-from .ollama_client import OllamaClient
+from .openrouter_client import OpenRouterClient
 from .prompts import JOB_FIT_PROMPT, COVER_LETTER_PROMPT, RESUME_TAILOR_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 class JobAnalyzer:
     """LLM-powered job description analysis."""
 
-    def __init__(self, client: OllamaClient = None):
-        from .ollama_client import ollama_client
-        self.client = client or ollama_client
+    def __init__(self, client: OpenRouterClient = None):
+        from .openrouter_client import openrouter_client
+        self.client = client or openrouter_client
 
     def analyze_fit(
         self,

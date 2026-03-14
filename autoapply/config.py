@@ -27,6 +27,11 @@ class Config:
     OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
+    # ── OpenRouter (cloud LLM — preferred when Ollama is not available) ───────
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
+    OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
     # ── Agent behaviour ───────────────────────────────────────────────────────
     MIN_FIT_SCORE = float(os.getenv("MIN_FIT_SCORE", "0.65"))
     MAX_DAILY_APPLICATIONS = int(os.getenv("MAX_DAILY_APPLICATIONS", "20"))
